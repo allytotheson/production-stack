@@ -64,6 +64,7 @@ class EndpointInfo:
 class EndpointStats:
     def __init__(self, maxlen=100):
         self.completion_times = deque(maxlen=maxlen)
+        self.current_load = 0
 
     def add_completion_time(self, completion_time: float):
         self.completion_times.append(completion_time)
@@ -78,6 +79,11 @@ class EndpointStats:
             return 0.0
         return statistics.stdev(self.completion_times)
 
+    def increment_load(self):
+        self.current_load += 1
+
+    def decrement_load(self):
+        self.current_load = max(0, self.current_load - 1)
 
 class ServiceDiscovery(metaclass=abc.ABCMeta):
     @abc.abstractmethod

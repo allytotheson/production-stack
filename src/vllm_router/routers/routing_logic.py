@@ -51,6 +51,7 @@ class RoutingLogic(str, enum.Enum):
     PREFIXAWARE = "prefixaware"
     DISAGGREGATED_PREFILL = "disaggregated_prefill"
     TIME_TRACKING = "timetracking"
+    LOAD_BALANCING = "loadbalancing"
 
 
 class RoutingInterface(metaclass=SingletonABCMeta):
