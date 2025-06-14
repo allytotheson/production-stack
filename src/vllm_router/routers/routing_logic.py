@@ -386,6 +386,91 @@ class DisaggregatedPrefillRouter(RoutingInterface):
         else:
             return decoder_endpoints[0].url
 
+class LoadBalancingRouter(RoutingInterface):
+    def __init__(self, lmcache_controller_port: int, flops_rate=312e12, hbm_rate=1.5e12, model_params=175e9):
+        self.kv_manager = controller_manager.LMCacheControllerManager(f"0.0.0.0:{lmcache_controller_port}")
+        self.flops_rate = flops_rate
+        self.hbm_rate = hbm_rate
+        self.model_params = model_params
+
+        self.req_id = 0
+        self.instance_id_to_ip = {}
+        self.endpoint_stats: Dict[str, EndpointStats] = {}
+
+    def start_kv_manager(self):
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self.thread.start()
+        asyncio.run_coroutine_threadsafe(self.kv_manager.start_all(), self.loop)
+
+    def estimate_ttft(self, effective_prompt_len: int, load: int) -> float:
+        compute = (2 * self.model_params * effective_prompt_len) / self.flops_rate
+        memory = (2 * self.model_params) / self.hbm_rate
+        return (compute + memory) * (1 + load)
+
+    def get_instance_id(self, msg):
+        instance_id = self.kv_manager.handle_orchestration_message(msg)
+        return instance_id#, instance_id.cached_token_len
+
+    def register_endpoint(self, endpoint: EndpointInfo):
+        if endpoint.url not in self.endpoint_stats:
+            self.endpoint_stats[endpoint.url] = EndpointStats()
+
+    async def route_request(
+        self,
+        endpoints: List[EndpointInfo],
+        engine_stats: Dict[str, EngineStats], 
+        request_stats: Dict[str, RequestStats],
+        request: Request,
+        request_json: Dict
+    ) -> str:
+
+        # tokenize the prompt
+        url = endpoints[0].url + "/tokenize"
+        headers = {"Content-Type": "application/json"}
+        data = {"model": endpoints[0].model_name, "prompt": request_json["prompt"]}
+        response = requests.post(url, headers=headers, json=data).json()
+        token_ids = response["tokens"]
+        msg = LookupMsg(tokens=token_ids)
+
+        # determine cache hit
+        instance_id = self.get_kv_cache_len(msg)
+        prompt_len = len(token_ids) #- cached_len
+
+        best_url = None
+        best_ttft = float("inf")
+
+        if instance_id is None or instance_id.best_instance_id is None:
+            for ep in endpoints:
+                stats = self.endpoint_stats.get(ep.url)
+                load = stats.current_load if stats else 0
+                est_ttft = self.estimate_ttft(prompt_len, load)
+                if est_ttft < best_ttft:
+                    best_ttft = est_ttft
+                    best_url = ep.url
+        else:
+            self.req_id += 1
+            if instance_id.best_instance_id not in self.instance_id_to_ip:
+                for ep in endpoints:
+                    query_message = QueryInstMsg(
+                        ip=ep.url.split(f":{ep.url.split(':')[-1]}")[
+                            0
+                        ].split("//")[1]
+                    )
+                    instance_id = await self.query_manager(query_message)
+                    self.instance_id_to_ip[instance_id.instance_id] = ep.url
+            logger.info(
+                f"Routing request to {instance_id.best_instance_id} found by kvaware router"
+            )
+            best_url = self.instance_id_to_ip[instance_id.best_instance_id]
+
+        # increment load for selected endpoint
+        self.endpoint_stats[best_url].increment_load()
+        return best_url
+
+    def complete_request(self, endpoint, completion_time: float):
+        self.endpoint_stats[endpoint.url].decrement_load()
+        self.endpoint_stats[endpoint.url].add_completion_time(completion_time)
 
 class TimeTrackingRouter(RoutingInterface):
     def __init__(self, alpha=1.0, beta=1.0, gamma=0.5):
@@ -461,6 +546,11 @@ def initialize_routing_logic(
         return DisaggregatedPrefillRouter(
             kwargs.get("prefill_model_labels"), kwargs.get("decode_model_labels")
         )
+    elif routing_logic == RoutingLogic.LOAD_BALANCING:
+        logger.info("Initializing load balancing routing logic")
+        router = LoadBalancingRouter(kwargs.get("lmcache_controller_port"))
+        router.start_kv_manager()
+        return router
     elif routing_logic == RoutingLogic.TIME_TRACKING:
         logger.info("Initializing endpoint load balancing routing logic")
         return TimeTrackingRouter()  # TODO
@@ -478,6 +568,7 @@ def reconfigure_routing_logic(
         KvawareRouter,
         DisaggregatedPrefillRouter,
         TimeTrackingRouter,
+        LoadBalancingRouter
     ):
         if cls in SingletonABCMeta._instances:
             del SingletonABCMeta._instances[cls]
@@ -493,6 +584,7 @@ def get_routing_logic() -> RoutingInterface:
         PrefixAwareRouter,
         DisaggregatedPrefillRouter,
         TimeTrackingRouter,
+        LoadBalancingRouter
     ):
         if cls in SingletonABCMeta._instances:
             return cls()
