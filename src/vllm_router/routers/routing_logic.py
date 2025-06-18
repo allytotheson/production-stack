@@ -408,9 +408,14 @@ class LoadBalancingRouter(RoutingInterface):
         memory = (2 * self.model_params) / self.hbm_rate
         return (compute + memory) * (1 + load)
 
-    def get_instance_id(self, msg):
-        instance_id = self.kv_manager.handle_orchestration_message(msg)
-        return instance_id#, instance_id.cached_token_len
+    def get_max_cache_len(ret_msg):
+        cached_len = 0
+        if ret_msg.layout_info:
+            #find entry with largest end index
+            instance_id = max(ret_msg.layout_info.items(), key=lambda x:x[1][1])[0]
+            cached_len = ret_msg.layout_info[instance_id][1]
+        
+        return cached_len
 
     def register_endpoint(self, endpoint: EndpointInfo):
         if endpoint.url not in self.endpoint_stats:
@@ -433,9 +438,11 @@ class LoadBalancingRouter(RoutingInterface):
         token_ids = response["tokens"]
         msg = LookupMsg(tokens=token_ids)
 
-        # determine cache hit
-        instance_id = self.get_kv_cache_len(msg)
-        prompt_len = len(token_ids) #- cached_len
+        # instance id of longest prefix is returned?
+        ret_msg = self.kv_manager.handle_orchestration_message(msg)
+        cached_len = self.get_max_cache_len(ret_msg)
+
+        prompt_len = len(token_ids) - cached_len
 
         best_url = None
         best_ttft = float("inf")
