@@ -19,6 +19,7 @@ import math
 import random
 import socket
 import threading
+import re
 from typing import Dict, List
 
 import requests
@@ -403,10 +404,33 @@ class LoadBalancingRouter(RoutingInterface):
         self.thread.start()
         asyncio.run_coroutine_threadsafe(self.kv_manager.start_all(), self.loop)
 
-    def estimate_ttft(self, effective_prompt_len: int, load: int) -> float:
+    def infer_model_params(self, model_name):
+        """
+            Infer model parameter count from the model name string.
+            Supports formats like "llama-7b", "mistral-13b", "custom-70B", etc.
+
+        Returns:
+        Number of parameters as a float (e.g., 7e9 for 7B).
+        """
+        match = re.search(r"(\d+)([bB])", model_name)
+
+        num = int(match.group(1))
+        suffix = match.group(2).lower()
+
+        if suffix == "b":
+            return num * 1e9
+        if suffix == "m":
+            return num * 1e6
+        else:
+            return 0
+    def estimate_ttft(self, effective_prompt_len: int, load: int, model_name) -> float:
+        model_params = self.infer_model_params(model_name)
+        if model_params == 0: #model_params not inferred from endpoint name
+            model_params = self.model_params
+        #based on formula from chen jinghong
         compute = (2 * self.model_params * effective_prompt_len) / self.flops_rate
         memory = (2 * self.model_params) / self.hbm_rate
-        return (compute + memory) * (1 + load)
+        return (compute + memory) * (1 + load) #scale by current endpoint load
 
     def get_max_cache_len(ret_msg):
         cached_len = 0
@@ -451,7 +475,7 @@ class LoadBalancingRouter(RoutingInterface):
             for ep in endpoints:
                 stats = self.endpoint_stats.get(ep.url)
                 load = stats.current_load if stats else 0
-                est_ttft = self.estimate_ttft(prompt_len, load)
+                est_ttft = self.estimate_ttft(prompt_len, load, ep.url)
                 if est_ttft < best_ttft:
                     best_ttft = est_ttft
                     best_url = ep.url
