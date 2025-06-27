@@ -59,7 +59,7 @@ The motivation behind this work is to improve the responsiveness and perceived l
 
 ### Implementation Details/Notes/Constraints
 
-![Model Workflow][./imgs/load_balancing_workflow.png]
+[Model Workflow][./imgs/load_balancing_workflow.png]
 #### Estimate TTFT (if no tokens are found in cache):
 
   The TTFT is estimated based on model parameters, prompt length, hardware throughput, and current endpoint load:
