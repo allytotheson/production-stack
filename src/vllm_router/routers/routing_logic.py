@@ -17,9 +17,9 @@ import asyncio
 import enum
 import math
 import random
+import re
 import socket
 import threading
-import re
 from typing import Dict, List
 
 import requests
@@ -387,9 +387,18 @@ class DisaggregatedPrefillRouter(RoutingInterface):
         else:
             return decoder_endpoints[0].url
 
+
 class LoadBalancingRouter(RoutingInterface):
-    def __init__(self, lmcache_controller_port: int, flops_rate=312e12, hbm_rate=1.5e12, model_params=175e9):
-        self.kv_manager = controller_manager.LMCacheControllerManager(f"0.0.0.0:{lmcache_controller_port}")
+    def __init__(
+        self,
+        lmcache_controller_port: int,
+        flops_rate=312e12,
+        hbm_rate=1.5e12,
+        model_params=175e9,
+    ):
+        self.kv_manager = controller_manager.LMCacheControllerManager(
+            f"0.0.0.0:{lmcache_controller_port}"
+        )
         self.flops_rate = flops_rate
         self.hbm_rate = hbm_rate
         self.model_params = model_params
@@ -423,22 +432,23 @@ class LoadBalancingRouter(RoutingInterface):
             return num * 1e6
         else:
             return 0
+
     def estimate_ttft(self, effective_prompt_len: int, load: int, model_name) -> float:
         model_params = self.infer_model_params(model_name)
-        if model_params == 0: #model_params not inferred from endpoint name
+        if model_params == 0:  # model_params not inferred from endpoint name
             model_params = self.model_params
-        #based on formula from chen jinghong
+        # based on formula from chen jinghong
         compute = (2 * self.model_params * effective_prompt_len) / self.flops_rate
         memory = (2 * self.model_params) / self.hbm_rate
-        return (compute + memory) * (1 + load) #scale by current endpoint load
+        return (compute + memory) * (1 + load)  # scale by current endpoint load
 
     def get_max_cache_len(ret_msg):
         cached_len = 0
         if ret_msg.layout_info:
-            #find entry with largest end index
-            instance_id = max(ret_msg.layout_info.items(), key=lambda x:x[1][1])[0]
+            # find entry with largest end index
+            instance_id = max(ret_msg.layout_info.items(), key=lambda x: x[1][1])[0]
             cached_len = ret_msg.layout_info[instance_id][1]
-        
+
         return cached_len
 
     def register_endpoint(self, endpoint: EndpointInfo):
@@ -448,10 +458,10 @@ class LoadBalancingRouter(RoutingInterface):
     async def route_request(
         self,
         endpoints: List[EndpointInfo],
-        engine_stats: Dict[str, EngineStats], 
+        engine_stats: Dict[str, EngineStats],
         request_stats: Dict[str, RequestStats],
         request: Request,
-        request_json: Dict
+        request_json: Dict,
     ) -> str:
 
         # tokenize the prompt
@@ -484,9 +494,7 @@ class LoadBalancingRouter(RoutingInterface):
             if instance_id.best_instance_id not in self.instance_id_to_ip:
                 for ep in endpoints:
                     query_message = QueryInstMsg(
-                        ip=ep.url.split(f":{ep.url.split(':')[-1]}")[
-                            0
-                        ].split("//")[1]
+                        ip=ep.url.split(f":{ep.url.split(':')[-1]}")[0].split("//")[1]
                     )
                     instance_id = await self.query_manager(query_message)
                     self.instance_id_to_ip[instance_id.instance_id] = ep.url
@@ -502,6 +510,7 @@ class LoadBalancingRouter(RoutingInterface):
     def complete_request(self, endpoint, completion_time: float):
         self.endpoint_stats[endpoint.url].decrement_load()
         self.endpoint_stats[endpoint.url].add_completion_time(completion_time)
+
 
 class TimeTrackingRouter(RoutingInterface):
     def __init__(self, alpha=1.0, beta=1.0, gamma=0.5):
@@ -599,7 +608,7 @@ def reconfigure_routing_logic(
         KvawareRouter,
         DisaggregatedPrefillRouter,
         TimeTrackingRouter,
-        LoadBalancingRouter
+        LoadBalancingRouter,
     ):
         if cls in SingletonABCMeta._instances:
             del SingletonABCMeta._instances[cls]
@@ -615,7 +624,7 @@ def get_routing_logic() -> RoutingInterface:
         PrefixAwareRouter,
         DisaggregatedPrefillRouter,
         TimeTrackingRouter,
-        LoadBalancingRouter
+        LoadBalancingRouter,
     ):
         if cls in SingletonABCMeta._instances:
             return cls()

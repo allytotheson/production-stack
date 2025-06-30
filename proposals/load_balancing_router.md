@@ -14,11 +14,13 @@
 * [Drawbacks](#drawbacks)
 * [Alternatives](#alternatives)
 * [References](#references)
+
 ---
 
 ## Summary
 
 This PR introduces `LoadBalancingRouter`, a router that distributes LLM requests across multiple endpoints based on estimated Time to First Token (TTFT). The goal is to improve user Quality of Experience by:
+
 * Predicting TTFT per request using prompt length, endpoint load, and endpoint hardware characteristics.
 * Levering Key-Value (KV)Cache hits to minimize redundant computation.
 
@@ -60,29 +62,30 @@ The motivation behind this work is to improve the responsiveness and perceived l
 ### Implementation Details/Notes/Constraints
 
 ![Model Workflow](imgs/load_balancing_workflow.png)
-#### Estimate TTFT (if no tokens are found in cache):
 
-  The TTFT is estimated based on model parameters, prompt length, hardware throughput, and current endpoint load:
+#### Estimate TTFT (if no tokens are found in cache)
 
-  - `compute = (2 * self.model_params * effective_prompt_len) / self.flops_rate`  
-  - `memory = (2 * self.model_params) / self.hbm_rate`  
-  - `scaled_ttft = (compute + memory) * (1 + load)`  
-    → Final TTFT estimate factoring in the current endpoint load.
+The TTFT is estimated based on model parameters, prompt length, hardware throughput, and current endpoint load:
+
+* `compute = (2 * self.model_params * effective_prompt_len) / self.flops_rate`
+* `memory = (2 * self.model_params) / self.hbm_rate`
+* `scaled_ttft = (compute + memory) * (1 + load)` → Final TTFT estimate factoring in the current endpoint load.
 
 #### `EndpointStats`
 
 Each endpoint maintains lightweight runtime statistics to guide routing decisions:
 
-- **Current number of in-flight requests** (`load`)  
+* **Current number of in-flight requests** (`load`)
   → Reflects real-time congestion or availability.
 
-- **Rolling average of request completion time**  
+* **Rolling average of request completion time**
+
   → Smooths recent durations to estimate responsiveness.
 
 **Load counter updates:**
 
-- `increment_load()` when a request is dispatched.
-- `decrement_load()` when a request completes.
+* `increment_load()` when a request is dispatched.
+* `decrement_load()` when a request completes.
 
 ---
 
@@ -96,6 +99,7 @@ Each endpoint maintains lightweight runtime statistics to guide routing decision
 ---
 
 ## Drawbacks
+
 * Endpoint metrics are determined based on name, e.g, 8B is assumed to be 8 billion.
 * Integration with the cache controller adds coupling and potential latency overhead.
 * The additional tokenization and cache lookup step adds preprocessing time for short prompts.
@@ -103,10 +107,12 @@ Each endpoint maintains lightweight runtime statistics to guide routing decision
 ---
 
 ## Alternatives
+
 * Use a simple round-robin or weighted load balancer.
 * Train an ML model to predict TTFT using past routing data.
 
 ---
 
 ## References
+
 [Estimate VRAM Usage in LLM Inference](https://www.jinghong-chen.net/estimate-vram-usage-in-llm-inference/)

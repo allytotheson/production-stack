@@ -87,6 +87,7 @@ class EndpointStats:
 
     def decrement_load(self):
         self.current_load = max(0, self.current_load - 1)
+
     # Pod name
     pod_name: Optional[str] = None
 

@@ -25,9 +25,9 @@ from vllm_router.log import init_logger
 from vllm_router.routers.routing_logic import (
     DisaggregatedPrefillRouter,
     KvawareRouter,
+    LoadBalancingRouter,
     PrefixAwareRouter,
     TimeTrackingRouter,
-    LoadBalancingRouter
 )
 from vllm_router.service_discovery import get_service_discovery
 from vllm_router.services.request_service.rewriter import (
@@ -143,9 +143,7 @@ async def process_request(
             endpoint, completion_time - start_time
         )
     if isinstance(request.app.state.router, LoadBalancingRouter):
-        request.app.state.router.on_completion(
-            endpoint, completion_time - start_time
-        )
+        request.app.state.router.on_completion(endpoint, completion_time - start_time)
     # if debug_request:
     #    logger.debug(f"Finished the request with request id: {debug_request.headers.get('x-request-id', None)} at {time.time()}")
     # Store in semantic cache if applicable
