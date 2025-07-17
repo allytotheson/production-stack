@@ -49,6 +49,16 @@ except ImportError:
 
 logger = init_logger(__name__)
 
+async def enqueue_request(
+        request: Request, 
+        endpoint: str, 
+        background_tasks: BackgroundTasks):
+    await request.app.state.router_queue.enqueue({
+        "request": request,
+        "endpoint": endpoint,
+        "background_tasks": background_tasks,
+    })
+    return JSONResponse(status_code=202, content={"status": "queued"})
 
 # TODO: (Brian) check if request is json beforehand
 async def process_request(

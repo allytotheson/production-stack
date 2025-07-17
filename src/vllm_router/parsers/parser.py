@@ -313,6 +313,12 @@ def parse_args():
         help="The threshold for kv-aware routing.",
     )
 
+    parser.add_argument(
+    "--router-queue-size",
+    type=int,
+    default=200,
+    help="Maximum number of router-side enqueued requests.",
+)
     args = parser.parse_args()
     args = load_initial_config_from_config_json_if_required(parser, args)
 

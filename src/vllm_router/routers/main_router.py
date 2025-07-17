@@ -21,6 +21,7 @@ from vllm_router.log import init_logger
 from vllm_router.protocols import ModelCard, ModelList
 from vllm_router.service_discovery import get_service_discovery
 from vllm_router.services.request_service.request import (
+    enqueue_request,
     route_general_request,
     route_sleep_wakeup_request,
 )
@@ -54,49 +55,49 @@ async def route_chat_completion(request: Request, background_tasks: BackgroundTa
             return cache_response
 
     logger.debug("No cache hit, forwarding request to backend")
-    return await route_general_request(
+    return await enqueue_request(
         request, "/v1/chat/completions", background_tasks
     )
 
 
 @main_router.post("/v1/completions")
 async def route_completion(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/v1/completions", background_tasks)
+    return await enqueue_request(request, "/v1/completions", background_tasks)
 
 
 @main_router.post("/v1/embeddings")
 async def route_embeddings(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/v1/embeddings", background_tasks)
+    return await enqueue_request(request, "/v1/embeddings", background_tasks)
 
 
 @main_router.post("/tokenize")
 async def route_tokenize(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/tokenize", background_tasks)
+    return await enqueue_request(request, "/tokenize", background_tasks)
 
 
 @main_router.post("/detokenize")
 async def route_detokenize(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/detokenize", background_tasks)
+    return await enqueue_request(request, "/detokenize", background_tasks)
 
 
 @main_router.post("/v1/rerank")
 async def route_v1_rerank(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/v1/rerank", background_tasks)
+    return await enqueue_request(request, "/v1/rerank", background_tasks)
 
 
 @main_router.post("/rerank")
 async def route_rerank(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/rerank", background_tasks)
+    return await enqueue_request(request, "/rerank", background_tasks)
 
 
 @main_router.post("/v1/score")
 async def route_v1_score(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/v1/score", background_tasks)
+    return await enqueue_request(request, "/v1/score", background_tasks)
 
 
 @main_router.post("/score")
 async def route_score(request: Request, background_tasks: BackgroundTasks):
-    return await route_general_request(request, "/score", background_tasks)
+    return await enqueue_request(request, "/score", background_tasks)
 
 
 @main_router.post("/sleep")

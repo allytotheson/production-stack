@@ -77,6 +77,11 @@ try:
 except ImportError:
     semantic_cache_available = False
 
+from vllm_router.services.queue_manager import RouterQueueManager
+import asyncio
+from vllm_router.services.request_service.request import route_general_request
+
+
 logger = logging.getLogger("uvicorn")
 
 
@@ -85,6 +90,15 @@ async def lifespan(app: FastAPI):
     app.state.httpx_client_wrapper.start()
     if hasattr(app.state, "batch_processor"):
         await app.state.batch_processor.initialize()
+    
+    # Start router queue worker
+    async def handle_queued_request(request, endpoint, background_tasks):
+        await route_general_request(request, endpoint, background_tasks)
+
+    asyncio.create_task(
+        app.state.router_queue.start_worker(handle_queued_request)
+    )
+
     yield
     await app.state.httpx_client_wrapper.stop()
 
@@ -252,6 +266,8 @@ def initialize_all(app: FastAPI, args):
     app.state.router = get_routing_logic()
     app.state.request_rewriter = get_request_rewriter()
 
+    # Initialize queue manager
+    app.state.router_queue = RouterQueueManager(max_queue_size=args.router_queue_size or 200)
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(main_router)
